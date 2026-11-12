@@ -1,403 +1,767 @@
-<title>DKIST Archive Explorer</title>
+<title>DKIST Sun Explorer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
-<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
 <style>
-/* Layout: one column of bands. Filters sit in one row above everything; summary tiles, then the
-   release schedule (the question this page answers), then the archive map and seeing histogram side by side. */
+/* Layout: a night-sky page. The Sun map is the hero (left), a plain-language info panel sits beside it (right),
+   the time slider runs underneath, and four "show me" story cards sit below as a guided tour.
+   Single dark theme on purpose: the Sun reads best against space. */
 :root {
-  --bg: #f6f7f9;            /* page: cool grey with a slight blue bias */
-  --surface: #ffffff;       /* panels and chart surface */
-  --ink: #12161c;           /* primary text */
-  --ink-2: #4a525e;         /* secondary text */
-  --ink-3: #7a828e;         /* muted text, axis labels */
-  --line: #dfe3e8;          /* borders, gridlines */
-  --chip: #eef1f4;          /* control fill */
-  --focus: #2a78d6;
-  --public: #1baf7a;
-  --embargo: #8a93a0;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;  /* instruments, fixed order */
+  color-scheme: dark;
+  --bg: #07090d;            /* space */
+  --panel: #10141b;         /* cards */
+  --panel-2: #171c25;       /* raised controls */
+  --line: #252c38;
+  --ink: #eef1f5;
+  --ink-2: #b3bcc8;
+  --ink-3: #7f8896;
+  --gold: #ffb547;          /* "today" marker and primary buttons: the Sun's own color */
+  --lock: #8d96a3;          /* locked (embargoed) datasets */
+  --open: #6fe0b0;          /* "unlocked" flash */
+  --s1: #3987e5; --s2: #e5672f; --s3: #22b07d; --s4: #d9a21b;  /* instruments, fixed order */
   --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
   --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #101317; --surface: #181c21; --ink: #eef0f3; --ink-2: #b6bcc5; --ink-3: #868e99;
-    --line: #2b3139; --chip: #232830; --focus: #3987e5; --public: #199e70; --embargo: #7d8591;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #101317; --surface: #181c21; --ink: #eef0f3; --ink-2: #b6bcc5; --ink-3: #868e99;
-  --line: #2b3139; --chip: #232830; --focus: #3987e5; --public: #199e70; --embargo: #7d8591;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark;
-}
+* { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
-.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 48px;
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 28px 56px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  display: grid; gap: 20px; }
-header { display: grid; gap: 6px; }
-.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
-h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(26px, 4vw, 34px); line-height: 1.15; margin: 0; text-wrap: balance; }
-h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0; }
-.lede { color: var(--ink-2); max-width: 68ch; margin: 0; }
+  display: grid; gap: 22px; }
+
+header { display: grid; gap: 8px; }
+.eyebrow { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 4.6vw, 44px); line-height: 1.08; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 17px; margin: 0; }
+h3 { font-family: var(--font-display); font-weight: 600; font-size: 15px; margin: 0; }
+.lede { color: var(--ink-2); max-width: 70ch; margin: 0; font-size: 15px; }
 .lede b { color: var(--ink); font-weight: 600; }
 
-/* Filters: one row, wraps on narrow screens */
-.filters { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+button { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible, canvas:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Filters */
+.filters { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; }
 .field { display: grid; gap: 6px; min-width: 0; }
-.field > .label { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.field > .label { font-size: 12px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--chip);
-  color: var(--ink); border-radius: 999px; padding: 5px 11px; font: 500 13px var(--font-body); cursor: pointer; }
+.chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--panel-2);
+  border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 500; cursor: pointer; }
 .chip .sw { width: 10px; height: 10px; border-radius: 3px; }
 .chip[aria-pressed="false"] { background: transparent; color: var(--ink-3); }
-.chip[aria-pressed="false"] .sw { opacity: .25; }
-.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.seg button { border: 0; background: transparent; color: var(--ink-2); padding: 6px 12px; font: 500 13px var(--font-body); cursor: pointer; }
+.chip[aria-pressed="false"] .sw { opacity: .2; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; color: var(--ink-2); padding: 6px 11px; font-size: 13px; font-weight: 500; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
-.seg button[aria-pressed="true"] { background: var(--chip); color: var(--ink); }
-select { font: 500 13px var(--font-body); padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
-.range { display: flex; align-items: center; gap: 10px; }
-.range input[type=range] { width: 160px; accent-color: var(--focus); }
-.range output { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 4.5ch; }
-.check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); }
-.reset { margin-left: auto; border: 1px solid var(--line); background: transparent; color: var(--ink-2); border-radius: 8px; padding: 6px 12px; font: 500 13px var(--font-body); cursor: pointer; }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.seg button[aria-pressed="true"] { background: var(--panel-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--gold); }
+select { font: 500 13px var(--font-body); padding: 6px 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); }
+.btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 9px; padding: 7px 13px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btn.primary { background: var(--gold); color: #1a1206; border-color: var(--gold); }
 
-/* Summary tiles */
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
-.tile .k { font-size: 12px; color: var(--ink-2); font-weight: 500; }
-.tile .v { font-family: var(--font-display); font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
-.tile .s { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.bar { height: 6px; border-radius: 3px; background: var(--embargo); overflow: hidden; margin-top: 6px; display: flex; }
-.bar i { display: block; height: 100%; background: var(--public); }
+/* Main stage */
+.stage { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.sunbox { position: relative; background: radial-gradient(circle at 50% 50%, #0d1119 0%, var(--bg) 70%); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+#sun { display: block; width: 100%; aspect-ratio: 1 / 1; max-width: 100%; cursor: crosshair; touch-action: manipulation; }
+.datebadge { position: absolute; left: 14px; top: 12px; display: grid; gap: 0; pointer-events: none; }
+.datebadge .d { font-family: var(--font-display); font-size: clamp(20px, 3vw, 28px); font-weight: 700; font-variant-numeric: tabular-nums; }
+.datebadge .w { font-size: 12px; color: var(--gold); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.legend { position: absolute; right: 12px; bottom: 10px; display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); pointer-events: none;
+  background: rgba(7,9,13,.72); padding: 8px 10px; border-radius: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.lg-open { width: 14px; height: 10px; background: rgba(57,135,229,.35); border: 1.5px solid var(--s1); border-radius: 2px; }
+.lg-lock { width: 14px; height: 10px; border: 1.5px dashed var(--lock); border-radius: 2px; }
+.tip { position: absolute; pointer-events: none; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; font-size: 12px; line-height: 1.4; max-width: 240px; box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+.tip b { font-weight: 600; }
+.sunnote { font-size: 12px; color: var(--ink-3); margin: 8px 2px 0; }
 
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 8px; min-width: 0; }
-.panel .sub { color: var(--ink-3); font-size: 13px; margin: 0; }
-.grid2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; }
-.chart { width: 100%; height: 320px; }
-.chart.tall { height: 360px; }
-.empty { color: var(--ink-3); padding: 40px 0; text-align: center; }
+/* Side panel */
+.side { display: grid; gap: 14px; min-width: 0; }
+.counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.count { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 2px; }
+.count .k { font-size: 12px; color: var(--ink-3); font-weight: 500; display: inline-flex; gap: 6px; align-items: center; }
+.count .v { font-family: var(--font-display); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.count .s { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.meter { height: 8px; border-radius: 4px; overflow: hidden; display: flex; background: transparent; border: 1px dashed var(--lock); }
+.meter i { display: block; height: 100%; background: linear-gradient(90deg, #3987e5, #22b07d); transition: width .15s; }
+.note { font-size: 12px; color: var(--ink-3); margin: 0; }
 
-.tablewrap { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
-th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-th { color: var(--ink-3); font-weight: 600; font-size: 12px; }
-td.id { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
-.soon { font-weight: 600; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.card .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.inst { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.inst .sw { width: 12px; height: 12px; border-radius: 3px; }
+.target { font-family: var(--font-display); font-size: 22px; font-weight: 700; line-height: 1.15; }
+.explain { color: var(--ink-2); margin: 0; }
+.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 14px; margin: 0; font-size: 13px; }
+.facts dt { color: var(--ink-3); }
+.facts dd { margin: 0; min-width: 0; }
+.status { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; font-weight: 600; }
+.status.pub { background: rgba(34,176,125,.13); color: #7fe3b9; }
+.status.lock { background: rgba(141,150,163,.13); color: var(--ink); }
+.status small { display: block; font-weight: 400; color: var(--ink-2); }
+.spectrum { position: relative; height: 12px; border-radius: 6px; margin-top: 6px;
+  background: linear-gradient(90deg, #7a2bd6 0%, #3a5bff 6%, #19b6e6 11%, #2bd06b 16%, #f2e03a 21%, #ff8a1d 25%, #e8261d 28%, #6e120c 31%, #2a0806 45%, #160404 100%); }
+.spectrum i { position: absolute; top: -4px; width: 3px; height: 20px; background: #fff; border-radius: 2px; box-shadow: 0 0 0 2px var(--panel); }
+.spec-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); margin-top: 3px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+.links a { color: var(--ink); text-decoration: none; border: 1px solid var(--line); background: var(--panel-2); border-radius: 9px; padding: 7px 12px; font-weight: 600; font-size: 13px; }
+.links a.primary { background: var(--gold); color: #1a1206; border-color: var(--gold); }
+details { font-size: 13px; color: var(--ink-2); }
+details summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+details p { margin: 8px 0 0; }
+.idtag { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+.cycle { font-size: 12px; color: var(--ink-3); }
+
+/* Timeline */
+.timeline { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 10px; display: grid; gap: 8px; }
+.tl-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.tl-head .hint { color: var(--ink-3); font-size: 13px; flex: 1 1 260px; }
+.play { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--gold); color: #1a1206; cursor: pointer; display: grid; place-items: center; flex: none; }
+.speed { font-size: 12px; }
+#tl { display: block; width: 100%; height: 110px; cursor: ew-resize; touch-action: none; }
+#time { width: 100%; accent-color: var(--gold); margin: 0; }
+.tl-key { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-3); }
+.tl-key span { display: inline-flex; gap: 6px; align-items: center; }
+.k-pub { width: 12px; height: 10px; background: #8fb2d6; border-radius: 2px; }
+.k-lock { width: 12px; height: 10px; border: 1.5px dashed var(--lock); border-radius: 2px; }
+.k-unl { width: 12px; height: 10px; background: var(--gold); border-radius: 2px; }
+
+/* Story cards */
+.stories { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.story { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 8px; align-content: start; }
+.story .num { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1; color: var(--gold); font-variant-numeric: tabular-nums; }
+.story p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.story .btn { justify-self: start; }
+
+.glossary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.glossary div { border-top: 1px solid var(--line); padding-top: 10px; }
+.glossary p { margin: 4px 0 0; color: var(--ink-2); font-size: 13px; }
 footer { color: var(--ink-3); font-size: 12px; display: grid; gap: 4px; }
 footer a { color: var(--ink-2); }
 
-@media (max-width: 860px) {
-  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid2 { grid-template-columns: minmax(0, 1fr); }
-  .reset { margin-left: 0; }
+@media (max-width: 920px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .stories { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .glossary { grid-template-columns: minmax(0, 1fr); }
 }
+@media (max-width: 520px) {
+  .counts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .count { padding: 10px; }
+  .count .v { font-size: 20px; }
+  .stories { grid-template-columns: minmax(0, 1fr); }
+  .legend { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .meter i { transition: none; } }
 </style>
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Daniel K. Inouye Solar Telescope · Haleakalā, Maui</div>
-    <h1>What has DKIST observed, and when does it go public?</h1>
-    <p class="lede" id="lede"></p>
+    <div class="eyebrow">Inouye Solar Telescope · 4-meter mirror · Haleakalā, Maui</div>
+    <h1>Every place the world's biggest solar telescope has looked</h1>
+    <p class="lede" id="lede">Loading the archive…</p>
   </header>
 
   <section class="filters" aria-label="Filters">
     <div class="field">
-      <span class="label">Instrument</span>
+      <span class="label">Instrument (camera)</span>
       <div class="chips" id="instChips"></div>
     </div>
     <div class="field">
-      <label class="label" for="seeing">Minimum seeing quality, r₀</label>
-      <div class="range">
-        <input type="range" id="seeing" min="0" max="15" step="0.5" value="0">
-        <output id="seeingOut" for="seeing">any</output>
-      </div>
-      <label class="check"><input type="checkbox" id="noSeeing" checked> Include datasets with no seeing value</label>
-    </div>
-    <div class="field">
-      <label class="label" for="target">Target</label>
+      <label class="label" for="target">Looking at</label>
       <select id="target"></select>
     </div>
     <div class="field">
-      <span class="label">Status</span>
-      <div class="seg" id="status">
-        <button type="button" data-v="all" aria-pressed="true">All</button>
-        <button type="button" data-v="public" aria-pressed="false">Public</button>
-        <button type="button" data-v="embargoed" aria-pressed="false">Embargoed</button>
+      <span class="label">Image sharpness (seeing)</span>
+      <div class="seg" id="seeing">
+        <button type="button" data-v="0" aria-pressed="true">Any</button>
+        <button type="button" data-v="5" aria-pressed="false">Fair+</button>
+        <button type="button" data-v="7" aria-pressed="false">Good+</button>
+        <button type="button" data-v="10" aria-pressed="false">Excellent</button>
       </div>
     </div>
-    <button type="button" class="reset" id="reset">Reset filters</button>
+    <div class="field">
+      <span class="label">Who can download it</span>
+      <div class="seg" id="status">
+        <button type="button" data-v="all" aria-pressed="true">Everything</button>
+        <button type="button" data-v="public" aria-pressed="false">Public</button>
+        <button type="button" data-v="locked" aria-pressed="false">Locked</button>
+      </div>
+    </div>
+    <button type="button" class="btn" id="reset">Reset</button>
   </section>
 
-  <section class="tiles" aria-label="Summary">
-    <div class="tile"><span class="k">Datasets shown</span><span class="v" id="tCount"></span><span class="s" id="tCountS"></span></div>
-    <div class="tile"><span class="k">Public now</span><span class="v" id="tPub"></span><span class="s" id="tPubS"></span><div class="bar"><i id="tPubBar"></i></div></div>
-    <div class="tile"><span class="k">Still embargoed</span><span class="v" id="tEmb"></span><span class="s" id="tEmbS"></span></div>
-    <div class="tile"><span class="k">Next release</span><span class="v" id="tNext"></span><span class="s" id="tNextS"></span></div>
-  </section>
+  <div class="stage">
+    <div>
+      <div class="sunbox">
+        <canvas id="sun" tabindex="0" aria-label="Map of the Sun with a box for every place DKIST observed. Use the time slider below to change the date."></canvas>
+        <div class="datebadge"><span class="w" id="when">Today</span><span class="d" id="dateLabel"></span></div>
+        <div class="legend">
+          <span><i class="lg-open"></i> Public: anyone can download</span>
+          <span><i class="lg-lock"></i> Locked: only the science team, for now</span>
+        </div>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+      <p class="sunnote">Each box is one dataset, drawn at its real position and size on the Sun (1 arcsecond ≈ 725 km). The disk is drawn to scale, about 960 arcseconds in radius, with solar north up. Boxes outside the disk looked at the faint corona above the edge. Hover over a box to see what it is, and click it for the full story.</p>
+    </div>
 
-  <section class="panel">
-    <h2>When embargoed data become public</h2>
-    <p class="sub">Each bar counts datasets whose embargo ends that month. During the embargo, only the observing team can download them.</p>
-    <div id="cRelease" class="chart"></div>
-  </section>
-
-  <div class="grid2">
-    <section class="panel">
-      <h2>Every dataset: date and wavelength</h2>
-      <p class="sub">Filled marks are public, open marks are embargoed. Each instrument has its own color and shape. Wavelength is on a log scale.</p>
-      <div id="cMap" class="chart tall"></div>
-    </section>
-    <section class="panel">
-      <h2>Seeing quality</h2>
-      <p class="sub">r₀ (the Fried parameter) is the size of a patch of steady air above the telescope. Bigger r₀ means steadier air and sharper images. The dashed line is your minimum.</p>
-      <div id="cSeeing" class="chart tall"></div>
-    </section>
+    <aside class="side" aria-live="polite">
+      <div class="counts">
+        <div class="count"><span class="k">Datasets</span><span class="v" id="cAll">0</span><span class="s" id="cAllS"></span></div>
+        <div class="count"><span class="k">Public</span><span class="v" id="cPub">0</span><span class="s" id="cPubS"></span></div>
+        <div class="count"><span class="k">Locked</span><span class="v" id="cLock">0</span><span class="s" id="cLockS"></span></div>
+      </div>
+      <div class="meter" title="Share that is public"><i id="meter"></i></div>
+      <p class="note" id="timeNote"></p>
+      <div class="card" id="detail"></div>
+    </aside>
   </div>
 
-  <section class="panel">
-    <h2>Next releases</h2>
-    <p class="sub" id="tableSub"></p>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Public on</th><th>Instrument</th><th>Dataset</th><th>Target</th><th>Observed</th><th>Spectral line</th><th>Size</th></tr></thead>
-      <tbody id="tbody"></tbody>
-    </table></div>
+  <section class="timeline" aria-label="Time slider">
+    <div class="tl-head">
+      <button type="button" class="play" id="play" aria-label="Play">
+        <svg id="playIcon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" fill="currentColor"/></svg>
+      </button>
+      <div>
+        <h2>Move through time</h2>
+        <div class="hint">Press play to watch four and a half years of observing. After "today" the bars become future release dates, and you'll see locked boxes open on the day their embargo ends.</div>
+      </div>
+      <div class="seg speed" id="speed">
+        <button type="button" data-v="1" aria-pressed="true">Normal</button>
+        <button type="button" data-v="3" aria-pressed="false">Fast</button>
+      </div>
+    </div>
+    <canvas id="tl" aria-hidden="true"></canvas>
+    <label for="time" class="note" style="position:absolute;left:-9999px">Date</label>
+    <input type="range" id="time" min="0" max="1" step="1">
+    <div class="tl-key">
+      <span><i class="k-pub"></i> Observed that month, now public</span>
+      <span><i class="k-lock"></i> Observed that month, still locked</span>
+      <span><i class="k-unl"></i> Datasets unlocking that month (future)</span>
+    </div>
+  </section>
+
+  <section aria-label="Guided tour" style="display:grid;gap:12px">
+    <h2>Four things to notice (click "Show me")</h2>
+    <div class="stories" id="stories"></div>
+  </section>
+
+  <section class="glossary" aria-label="Words used on this page">
+    <div><h3>Embargo (locked)</h3><p>When scientists win telescope time, they get their data to themselves for a while so they can publish first. After the embargo ends, anyone in the world can download it for free.</p></div>
+    <div><h3>Seeing</h3><p>How steady the air above the telescope was, like the shimmer over a hot road. It's measured as r₀: the size of a patch of calm air. Bigger is sharper. Here, Fair is 5 cm or more, Good is 7 cm or more, and Excellent is 10 cm or more.</p></div>
+    <div><h3>Wavelength</h3><p>The color of light the camera recorded. Each color comes from particular atoms at a particular height in the Sun's atmosphere, so choosing a color means choosing which layer to look at. Many of DKIST's colors are infrared, invisible to our eyes.</p></div>
   </section>
 
   <footer>
     <span id="asof"></span>
-    <span>Data: NSO DKIST Data Center, <a href="https://dkist.data.nso.edu" target="_blank" rel="noopener">dkist.data.nso.edu</a>, searched with the <code>dkist</code> Python package. Built for CS85 project 16.</span>
+    <span>Data: NSO DKIST Data Center, <a href="https://dkist.data.nso.edu" target="_blank" rel="noopener">dkist.data.nso.edu</a>, searched with the <code>dkist</code> Python package. Preview movies are hosted by the DKIST Data Center on Vimeo. Built for CS85 project 16.</span>
   </footer>
 </div>
 
 <script>
-// ---- The data: filled in by starters/16c_dkist_dashboard.py ----
+// =====================================================================
+// 1. DATA (filled in by starters/16c_dkist_dashboard.py)
+// =====================================================================
 const DATA = /*DATA*/;
-
-// Each row: [id, instrumentIndex, observedISO, wavelength_nm, r0_cm|null, embargoEndISO|null, sizeGB, targets, line]
 const INST = DATA.instruments;
-const NOW = new Date();
-const rows = DATA.rows.map(r => ({
-  id: r[0], inst: r[1], obs: new Date(r[2]), nm: r[3], r0: r[4],
-  end: r[5] ? new Date(r[5]) : null, gb: r[6], targets: r[7], line: r[8],
+const EXPERIMENTS = DATA.experiments;            // [id, description]
+const NOW = Date.now();
+const DAY = 86400000;
+
+// Each row: [id, inst, startISO, minutes, nm, line, r0cm, embargoEndISO, GB, targets, [x,y,w,h], expIdx, vimeoId]
+const all = DATA.rows.map(r => ({
+  id: r[0], inst: r[1], obs: Date.parse(r[2]), minutes: r[3], nm: r[4], line: r[5], r0: r[6],
+  end: r[7] ? Date.parse(r[7]) : null, gb: r[8], targets: r[9] ? r[9].split("; ") : [],
+  pos: r[10], exp: r[11], vimeo: r[12],
 }));
-// A dataset is public if it never had an embargo, or its embargo date has passed (by the viewer's clock).
-rows.forEach(d => { d.public = !d.end || d.end <= NOW; });
+// Big boxes first, so small ones draw on top and stay visible.
+all.sort((a, b) => (b.pos ? b.pos[2] * b.pos[3] : 0) - (a.pos ? a.pos[2] * a.pos[3] : 0));
 
-const SHAPES = ["circle", "square", "diamond", "triangle-up"];
-const state = { inst: new Set(INST.map((_, i) => i)), minR0: 0, noSeeing: true, target: "all", status: "all" };
+// Locked at time t? Before today we only know today's status (the archive doesn't
+// record when older datasets were released), so we use the later of t and today.
+const isLocked = (d, t) => d.end != null && d.end > Math.max(t, NOW);
 
-const fmtDate = d => d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+// =====================================================================
+// 2. PLAIN-LANGUAGE EXPLANATIONS
+// =====================================================================
+const INST_INFO = {
+  "VISP": { name: "Visible Spectro-Polarimeter", what: "Spreads visible light into a detailed rainbow and measures its polarization, which reveals the Sun's magnetic field." },
+  "VBI": { name: "Visible Broadband Imager", what: "A very fast camera that takes the sharpest pictures, through a few colored filters. This is the camera behind DKIST's famous close-up images." },
+  "CRYO-NIRSP": { name: "Cryogenic Near-Infrared Spectro-Polarimeter", what: "A super-cooled infrared instrument. It can see the faint corona, the Sun's million-degree outer atmosphere, beyond the bright edge of the disk." },
+  "DL-NIRSP": { name: "Diffraction-Limited Near-Infrared Spectro-Polarimeter", what: "Records a small patch in many infrared colors at the same time, building a 3D picture of the magnetic field." },
+};
+const TARGET_INFO = {
+  sunspot: ["Sunspot", "A dark patch where strong magnetic fields block heat from rising. Sunspots can be bigger than Earth, and flares often start near them."],
+  activecorona: ["Corona above an active region", "The hot outer atmosphere above sunspot regions, where magnetic loops glow at over a million degrees."],
+  quietsun: ["Quiet Sun", "The calm surface away from sunspots. It's covered in boiling 'granules' about 1,000 km across, like a pot of simmering soup."],
+  plages: ["Plage", "Bright, magnetic patches around sunspot regions."],
+  prominence: ["Prominence", "A huge cloud of cooler gas held above the Sun's edge by magnetic fields."],
+  coronalhole: ["Coronal hole", "A region where magnetic field lines open into space and the fast solar wind streams out."],
+  quietcorona: ["Quiet corona", "The faint outer atmosphere away from active regions."],
+  filament: ["Filament", "A prominence seen from above, against the bright disk. It shows up as a dark thread."],
+  spicules: ["Spicules", "Thin jets of gas that shoot up thousands of km and fall back within minutes."],
+  unknown: ["Not labelled", "The observers didn't tag what they were looking at."],
+};
+const targetName = t => (TARGET_INFO[t] || [t])[0];
+
+function lineMeaning(line, nm) {
+  if (/^Fe X|^Si X/.test(line)) return "very hot, highly charged atoms that only exist above a million degrees. This light shows the corona.";
+  if (/^Fe I/.test(line)) return "iron atoms at the visible surface (photosphere). The best line for measuring magnetic fields.";
+  if (/^Ca II/.test(line)) return "calcium, from the chromosphere, the thin layer just above the surface.";
+  if (/^He I/.test(line)) return "helium, from the top of the chromosphere. Good for filaments and spicules.";
+  if (/^H (alpha|beta|gamma)/.test(line)) return "hydrogen, from the chromosphere. Shows filaments, flares and spicules.";
+  if (/^Na I/.test(line)) return "sodium, from between the surface and the chromosphere.";
+  if (/^Mg I/.test(line)) return "magnesium, from just above the surface.";
+  if (/^Sr I/.test(line)) return "strontium, at the surface.";
+  return nm < 750 ? "a filter in visible light." : "a filter in infrared light.";
+}
+function seeingWord(r0) {
+  if (r0 == null) return ["not measured", ""];
+  if (r0 >= 10) return ["Excellent", "very steady air"];
+  if (r0 >= 7) return ["Good", "fairly steady air"];
+  if (r0 >= 5) return ["Fair", "some shimmer"];
+  return ["Shaky", "lots of shimmer, blurrier images"];
+}
+
+// =====================================================================
+// 3. FORMATTING HELPERS
+// =====================================================================
+const fmtDate = t => new Date(t).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+const fmtMonth = t => new Date(t).toLocaleDateString("en-US", { year: "numeric", month: "short", timeZone: "UTC" });
 const fmtInt = n => n.toLocaleString("en-US");
-const tb = gb => gb >= 1000 ? (gb / 1000).toFixed(1) + " TB" : Math.round(gb) + " GB";
-const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const instColor = i => css("--s" + (i + 1));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const COLORS = [1, 2, 3, 4].map(i => css("--s" + i));
+const LOCK = css("--lock"), GOLD = css("--gold"), OPEN = css("--open");
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const daysUntil = t => Math.ceil((t - NOW) / DAY);
+const LOCK_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>`;
+const OPEN_SVG = `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 5.8-1" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>`;
 
-// ---- Build the filter controls ----
+// =====================================================================
+// 4. STATE AND FILTERS
+// =====================================================================
+const FIRST_OBS = Math.min(...all.map(d => d.obs));
+const START = Date.UTC(new Date(FIRST_OBS).getUTCFullYear(), new Date(FIRST_OBS).getUTCMonth(), 1);
+const lastEnd = Math.max(...all.filter(d => d.end).map(d => d.end), NOW);
+const END = Date.UTC(new Date(lastEnd).getUTCFullYear(), new Date(lastEnd).getUTCMonth() + 1, 1);
+
+const state = { inst: new Set(INST.map((_, i) => i)), target: "all", minSeeing: 0, status: "all",
+                t: NOW, playing: false, speed: 1, selected: null, candidates: [], candIdx: 0 };
+
+function passes(d) {
+  if (!state.inst.has(d.inst)) return false;
+  if (state.target !== "all" && !d.targets.includes(state.target)) return false;
+  if (state.minSeeing > 0 && (d.r0 == null || d.r0 < state.minSeeing)) return false;
+  if (state.status !== "all") {
+    const locked = isLocked(d, state.t);
+    if ((state.status === "locked") !== locked) return false;
+  }
+  return true;
+}
+// Filters that don't depend on time (used by the timeline bars).
+function passesStatic(d) {
+  if (!state.inst.has(d.inst)) return false;
+  if (state.target !== "all" && !d.targets.includes(state.target)) return false;
+  if (state.minSeeing > 0 && (d.r0 == null || d.r0 < state.minSeeing)) return false;
+  return true;
+}
+
+// Build filter controls
 const chipBox = document.getElementById("instChips");
 INST.forEach((name, i) => {
   const b = document.createElement("button");
-  b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", "true"); b.id = "chip-" + i;
-  b.innerHTML = `<span class="sw" style="background:var(--s${i + 1})"></span>${name}`;
-  b.onclick = () => {
-    state.inst.has(i) ? state.inst.delete(i) : state.inst.add(i);
-    b.setAttribute("aria-pressed", state.inst.has(i));
-    render();
-  };
+  b.type = "button"; b.className = "chip"; b.id = "chip-" + i; b.setAttribute("aria-pressed", "true");
+  b.title = INST_INFO[name].name + ": " + INST_INFO[name].what;
+  b.innerHTML = `<span class="sw" style="background:${COLORS[i]}"></span>${name}`;
+  b.onclick = () => { state.inst.has(i) ? state.inst.delete(i) : state.inst.add(i); syncControls(); update(true); };
   chipBox.appendChild(b);
 });
-
 const targetCounts = {};
-rows.forEach(d => d.targets.split("; ").forEach(t => { if (t) targetCounts[t] = (targetCounts[t] || 0) + 1; }));
+all.forEach(d => d.targets.forEach(t => targetCounts[t] = (targetCounts[t] || 0) + 1));
 const targetSel = document.getElementById("target");
-targetSel.innerHTML = `<option value="all">All targets</option>` + Object.entries(targetCounts)
-  .sort((a, b) => b[1] - a[1]).map(([t, n]) => `<option value="${t}">${t} (${fmtInt(n)})</option>`).join("");
-targetSel.onchange = () => { state.target = targetSel.value; render(); };
+targetSel.innerHTML = `<option value="all">Everything</option>` + Object.entries(targetCounts)
+  .sort((a, b) => (a[0] === "unknown") - (b[0] === "unknown") || b[1] - a[1])
+  .map(([t, n]) => `<option value="${t}">${esc(targetName(t))} (${fmtInt(n)})</option>`).join("");
+targetSel.onchange = () => { state.target = targetSel.value; update(true); };
 
-const seeing = document.getElementById("seeing"), seeingOut = document.getElementById("seeingOut");
-seeing.oninput = () => { state.minR0 = +seeing.value; render(); };
-const noSeeing = document.getElementById("noSeeing");
-noSeeing.onchange = () => { state.noSeeing = noSeeing.checked; render(); };
+function segment(id, key, parse) {
+  document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => { state[key] = parse(b.dataset.v); syncControls(); update(true); });
+}
+segment("seeing", "minSeeing", Number);
+segment("status", "status", String);
+segment("speed", "speed", Number);
 
-document.querySelectorAll("#status button").forEach(b => b.onclick = () => {
-  state.status = b.dataset.v;
-  document.querySelectorAll("#status button").forEach(x => x.setAttribute("aria-pressed", x === b));
-  render();
+function syncControls() {
+  INST.forEach((_, i) => document.getElementById("chip-" + i).setAttribute("aria-pressed", state.inst.has(i)));
+  targetSel.value = state.target;
+  document.querySelectorAll("#seeing button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.v === state.minSeeing));
+  document.querySelectorAll("#status button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === state.status));
+  document.querySelectorAll("#speed button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.v === state.speed));
+}
+function resetFilters() {
+  state.inst = new Set(INST.map((_, i) => i)); state.target = "all"; state.minSeeing = 0; state.status = "all";
+  syncControls();
+}
+document.getElementById("reset").onclick = () => { resetFilters(); state.t = NOW; state.selected = null; update(true); };
+
+// =====================================================================
+// 5. THE SUN MAP (canvas)
+// =====================================================================
+const sun = document.getElementById("sun");
+const sctx = sun.getContext("2d");
+const R_SUN = 960;          // arcseconds, approximate radius of the solar disk seen from Earth
+const EXTENT = 1650;        // arcseconds from centre to the edge of the map
+let S = { w: 0, scale: 1, dpr: 1 };
+
+function sizeSun() {
+  const w = sun.clientWidth, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  sun.width = w * dpr; sun.height = w * dpr;
+  S = { w, dpr, scale: (w / 2) / EXTENT };
+}
+const toPx = (x, y) => [S.w / 2 + x * S.scale, S.w / 2 - y * S.scale];
+const toArc = (px, py) => [(px - S.w / 2) / S.scale, (S.w / 2 - py) / S.scale];
+
+// Pixel rectangle for a dataset (tiny slits get a minimum size so you can see and click them)
+function rectOf(d, min = 3) {
+  const [cx, cy] = toPx(d.pos[0], d.pos[1]);
+  const w = Math.max(d.pos[2] * S.scale, min), h = Math.max(d.pos[3] * S.scale, min);
+  return [cx - w / 2, cy - h / 2, w, h];
+}
+
+function drawSunDisk(ctx) {
+  const c = S.w / 2, r = R_SUN * S.scale;
+  // faint corona glow
+  let g = ctx.createRadialGradient(c, c, r * 0.95, c, c, r * 1.5);
+  g.addColorStop(0, "rgba(255,150,60,0.16)"); g.addColorStop(1, "rgba(255,150,60,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c, c, r * 1.5, 0, 7); ctx.fill();
+  // the disk: kept dim so the colored boxes stand out
+  g = ctx.createRadialGradient(c, c, 0, c, c, r);
+  g.addColorStop(0, "#4a2c14"); g.addColorStop(0.75, "#3a210f"); g.addColorStop(1, "#2a160a");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c, c, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = "rgba(255,170,80,0.55)"; ctx.lineWidth = 1.5; ctx.stroke();
+  // guides: equator and central meridian, plus labels
+  ctx.strokeStyle = "rgba(255,200,140,0.10)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(c - r, c); ctx.lineTo(c + r, c); ctx.moveTo(c, c - r); ctx.lineTo(c, c + r); ctx.stroke();
+  ctx.fillStyle = "rgba(238,241,245,0.45)"; ctx.font = "600 11px Inter, system-ui, sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("N", c, c - r - 8); ctx.fillText("S", c, c + r + 16);
+  ctx.textAlign = "left"; ctx.fillText("W", c + r + 8, c + 4); ctx.textAlign = "right"; ctx.fillText("E", c - r - 8, c + 4);
+}
+
+function drawSun(time) {
+  const ctx = sctx;
+  ctx.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
+  ctx.clearRect(0, 0, S.w, S.w);
+  drawSunDisk(ctx);
+  const t = state.t, flash = 50 * DAY;          // how long the "new" ring lasts, in story time
+  const rings = [];
+  for (const d of all) {
+    if (!d.pos || d.obs > t || !passes(d)) continue;
+    const [x, y, w, h] = rectOf(d);
+    const col = COLORS[d.inst];
+    if (isLocked(d, t)) {
+      ctx.setLineDash([3, 2]); ctx.strokeStyle = rgba(LOCK, w * h > 2500 ? 0.45 : 0.8); ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    } else {
+      // Big boxes are nearly see-through so they don't hide everything underneath.
+      const big = Math.min(1, (w * h) / 2500);
+      ctx.fillStyle = rgba(col, 0.28 - 0.24 * big); ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = rgba(col, 0.95 - 0.45 * big); ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+    }
+    if (state.playing) {
+      const age = t - d.obs;
+      if (age < flash) rings.push([x + w / 2, y + h / 2, age / flash, col]);
+      if (d.end && t > NOW && d.end <= t && t - d.end < flash) rings.push([x + w / 2, y + h / 2, (t - d.end) / flash, OPEN]);
+    }
+  }
+  for (const [x, y, p, col] of rings) {             // expanding rings for new and unlocked datasets
+    ctx.strokeStyle = rgba(col, 1 - p); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, 5 + 22 * p, 0, 7); ctx.stroke();
+  }
+  const sel = state.selected;
+  if (sel && sel.pos && sel.obs <= t) {             // highlight the selected dataset
+    const [x, y, w, h] = rectOf(sel, 6);
+    const pulse = 0.5 + 0.5 * Math.sin((time || 0) / 250);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.strokeRect(x - 3, y - 3, w + 6, h + 6);
+    ctx.strokeStyle = `rgba(255,255,255,${0.25 + 0.35 * pulse})`; ctx.lineWidth = 6; ctx.strokeRect(x - 7, y - 7, w + 14, h + 14);
+  }
+}
+
+// Find the datasets under the mouse (smallest first)
+function hits(px, py) {
+  const out = [];
+  for (const d of all) {
+    if (!d.pos || d.obs > state.t || !passes(d)) continue;
+    const [x, y, w, h] = rectOf(d, 8);
+    if (px >= x && px <= x + w && py >= y && py <= y + h) out.push(d);
+  }
+  return out.sort((a, b) => a.pos[2] * a.pos[3] - b.pos[2] * b.pos[3]);
+}
+const tip = document.getElementById("tip");
+sun.addEventListener("mousemove", e => {
+  const r = sun.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  const h = hits(px, py);
+  if (!h.length) { tip.hidden = true; sun.style.cursor = "crosshair"; return; }
+  const d = h[0];
+  sun.style.cursor = "pointer";
+  tip.innerHTML = `<b style="color:${COLORS[d.inst]}">${INST[d.inst]}</b> · ${fmtDate(d.obs)}<br>${esc(d.targets.map(targetName).join(", ") || "Not labelled")}` +
+    `<br>${isLocked(d, state.t) ? "Locked until " + fmtDate(d.end) : "Public"}${h.length > 1 ? `<br><span style="color:var(--ink-3)">+${h.length - 1} more here. Click to cycle.</span>` : ""}`;
+  tip.hidden = false;
+  const tx = Math.min(px + 14, r.width - 250), ty = Math.min(py + 14, r.height - 90);
+  tip.style.left = Math.max(4, tx) + "px"; tip.style.top = Math.max(4, ty) + "px";
+});
+sun.addEventListener("mouseleave", () => tip.hidden = true);
+sun.addEventListener("click", e => {
+  const r = sun.getBoundingClientRect();
+  const h = hits(e.clientX - r.left, e.clientY - r.top);
+  if (!h.length) return;
+  const same = h.length === state.candidates.length && h.every((d, i) => d === state.candidates[i]);
+  state.candIdx = same ? (state.candIdx + 1) % h.length : 0;
+  state.candidates = h;
+  select(h[state.candIdx]);
 });
 
-document.getElementById("reset").onclick = () => {
-  state.inst = new Set(INST.map((_, i) => i)); state.minR0 = 0; state.noSeeing = true; state.target = "all"; state.status = "all";
-  document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", "true"));
-  seeing.value = 0; noSeeing.checked = true; targetSel.value = "all";
-  document.querySelectorAll("#status button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "all"));
-  render();
-};
+// =====================================================================
+// 6. THE DETAIL CARD
+// =====================================================================
+const detail = document.getElementById("detail");
+function select(d) { state.selected = d; renderDetail(); drawSun(); }
 
-// ---- Apply the filters ----
-function filtered() {
-  return rows.filter(d =>
-    state.inst.has(d.inst) &&
-    (d.r0 == null ? state.noSeeing : d.r0 >= state.minR0) &&
-    (state.target === "all" || d.targets.split("; ").includes(state.target)) &&
-    (state.status === "all" || (state.status === "public") === d.public));
-}
-
-// ---- Shared chart styling, read from the page's color tokens so both themes work ----
-function baseLayout(extra) {
-  const ink2 = css("--ink-2"), line = css("--line");
-  const axis = { gridcolor: line, linecolor: line, zerolinecolor: line, tickfont: { color: ink2, size: 11 },
-                 title: { font: { color: ink2, size: 12 } } };
-  return Object.assign({
-    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
-    font: { family: "Inter, system-ui, sans-serif", color: css("--ink") },
-    margin: { l: 56, r: 12, t: 8, b: 44 },
-    legend: { orientation: "h", y: 1.12, x: 0, traceorder: "normal", font: { color: ink2, size: 12 } },
-    hoverlabel: { bgcolor: css("--surface"), bordercolor: line, font: { color: css("--ink"), family: "Inter, system-ui, sans-serif" } },
-    xaxis: JSON.parse(JSON.stringify(axis)), yaxis: JSON.parse(JSON.stringify(axis)),
-    bargap: 0.18,
-  }, extra || {});
-}
-const CONFIG = { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"] };
-
-function emptyChart(el, msg) { Plotly.purge(el); el.innerHTML = `<div class="empty">${msg}</div>`; }
-
-// ---- Chart 1: release schedule (stacked bars by instrument) ----
-function drawRelease(list) {
-  const el = document.getElementById("cRelease");
-  const pending = list.filter(d => !d.public);
-  if (!pending.length) return emptyChart(el, "Nothing embargoed matches these filters.");
-  el.innerHTML = "";
-  const monthKey = d => `${d.end.getUTCFullYear()}-${String(d.end.getUTCMonth() + 1).padStart(2, "0")}-01`;
-  const months = [...new Set(pending.map(monthKey))].sort();
-  // fill gaps so empty months show as gaps on the axis
-  const all = []; let m = new Date(months[0] + "T00:00:00Z"); const last = new Date(months[months.length - 1] + "T00:00:00Z");
-  while (m <= last) { all.push(m.toISOString().slice(0, 10)); m = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 1)); }
-  const traces = INST.map((name, i) => {
-    const counts = all.map(k => pending.filter(d => d.inst === i && monthKey(d) === k).length);
-    return { type: "bar", name, x: all, y: counts, marker: { color: instColor(i), line: { color: css("--surface"), width: 1 } },
-             hovertemplate: `<b>${name}</b><br>%{x|%B %Y}: %{y} datasets<extra></extra>` };
-  }).filter((t, i) => state.inst.has(i));
-  Plotly.react(el, traces, baseLayout({
-    barmode: "stack",
-    xaxis: Object.assign(baseLayout().xaxis, { type: "date", tickformat: "%b\n%Y", dtick: el.clientWidth < 600 ? "M2" : "M1", showgrid: false }),
-    yaxis: Object.assign(baseLayout().yaxis, { title: { text: "Datasets becoming public", font: { color: css("--ink-2"), size: 12 } } }),
-  }), CONFIG);
-}
-
-// ---- Chart 2: archive map (date vs wavelength) ----
-function drawMap(list) {
-  const el = document.getElementById("cMap");
-  if (!list.length) return emptyChart(el, "No datasets match these filters.");
-  el.innerHTML = "";
-  const traces = [];
-  INST.forEach((name, i) => {
-    if (!state.inst.has(i)) return;
-    [true, false].forEach(pub => {
-      const g = list.filter(d => d.inst === i && d.public === pub);
-      if (!g.length) return;
-      traces.push({
-        type: "scattergl", mode: "markers", name: pub ? name : name + " (embargoed)", legendgroup: name, showlegend: pub,
-        x: g.map(d => d.obs), y: g.map(d => d.nm),
-        customdata: g.map(d => [d.id, d.line || "—", d.r0 == null ? "no value" : d.r0.toFixed(1) + " cm",
-                                d.public ? "public" : "public on " + fmtDate(d.end), d.targets]),
-        hovertemplate: `<b>${name}</b> · %{customdata[0]}<br>%{x|%d %b %Y}<br>%{y:.1f} nm · %{customdata[1]}` +
-                       `<br>target: %{customdata[4]}<br>seeing r₀: %{customdata[2]}<br>%{customdata[3]}<extra></extra>`,
-        marker: { symbol: SHAPES[i] + (pub ? "" : "-open"), size: 8, color: instColor(i), opacity: pub ? 0.75 : 1,
-                  line: { width: pub ? 0 : 1.5, color: instColor(i) } },
-      });
-    });
-  });
-  Plotly.react(el, traces, baseLayout({
-    xaxis: Object.assign(baseLayout().xaxis, { type: "date", title: { text: "Observed (UT)", font: { color: css("--ink-2"), size: 12 } } }),
-    yaxis: Object.assign(baseLayout().yaxis, { type: "log", title: { text: "Wavelength (nm)", font: { color: css("--ink-2"), size: 12 } },
-                                               tickvals: [400, 500, 600, 800, 1000, 1500], }),
-  }), CONFIG);
-}
-
-// ---- Chart 3: seeing histogram ----
-function drawSeeing(list) {
-  const el = document.getElementById("cSeeing");
-  const withR0 = list.filter(d => d.r0 != null);
-  if (!withR0.length) return emptyChart(el, "None of these datasets has a seeing value.");
-  el.innerHTML = "";
-  const traces = INST.map((name, i) => ({
-    type: "histogram", name, x: withR0.filter(d => d.inst === i).map(d => Math.min(d.r0, 20)),
-    xbins: { start: 0, end: 20, size: 0.5 }, marker: { color: instColor(i), line: { color: css("--surface"), width: 1 } },
-    hovertemplate: `<b>${name}</b><br>r₀ %{x} cm: %{y} datasets<extra></extra>`,
-  })).filter((t, i) => state.inst.has(i));
-  const shapes = state.minR0 > 0 ? [{ type: "line", x0: state.minR0, x1: state.minR0, y0: 0, y1: 1, yref: "paper",
-                                      line: { color: css("--ink"), width: 1.5, dash: "dash" } }] : [];
-  Plotly.react(el, traces, baseLayout({
-    barmode: "stack", shapes, bargap: 0.05,
-    xaxis: Object.assign(baseLayout().xaxis, { range: [0, 20], title: { text: "r₀ (cm), values above 20 shown at 20", font: { color: css("--ink-2"), size: 12 } } }),
-    yaxis: Object.assign(baseLayout().yaxis, { title: { text: "Datasets", font: { color: css("--ink-2"), size: 12 } } }),
-  }), CONFIG);
-}
-
-// ---- Summary tiles and table ----
-function drawSummary(list) {
-  const pub = list.filter(d => d.public), emb = list.filter(d => !d.public);
-  const gb = l => l.reduce((s, d) => s + d.gb, 0);
-  document.getElementById("tCount").textContent = fmtInt(list.length);
-  document.getElementById("tCountS").textContent = `of ${fmtInt(rows.length)} · ${tb(gb(list))} of data`;
-  const pct = list.length ? Math.round(100 * pub.length / list.length) : 0;
-  document.getElementById("tPub").textContent = list.length ? pct + "%" : "—";
-  document.getElementById("tPubS").textContent = `${fmtInt(pub.length)} datasets · ${tb(gb(pub))}`;
-  document.getElementById("tPubBar").style.width = pct + "%";
-  document.getElementById("tEmb").textContent = fmtInt(emb.length);
-  document.getElementById("tEmbS").textContent = emb.length ? `${tb(gb(emb))} · observed since ${fmtDate(new Date(Math.min(...emb.map(d => d.obs))))}` : "nothing waiting";
-
-  const upcoming = emb.slice().sort((a, b) => a.end - b.end);
-  if (upcoming.length) {
-    const first = upcoming[0].end;
-    const sameDay = upcoming.filter(d => d.end.toISOString().slice(0, 10) === first.toISOString().slice(0, 10)).length;
-    // count calendar days (UTC) until the release, so a release later today says "today"
-    const dayOf = d => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-    const days = Math.max(0, Math.round((dayOf(first) - dayOf(NOW)) / 86400000));
-    document.getElementById("tNext").textContent = fmtDate(first).replace(/, \d{4}$/, "");
-    document.getElementById("tNextS").textContent = `${days === 0 ? "today" : "in " + days + (days === 1 ? " day" : " days")} · ${sameDay} datasets · last on ${fmtDate(upcoming[upcoming.length - 1].end)}`;
-  } else {
-    document.getElementById("tNext").textContent = "—";
-    document.getElementById("tNextS").textContent = "no embargoed datasets in this view";
+function renderDetail() {
+  const d = state.selected;
+  if (!d) {
+    const next = all.filter(x => x.end && x.end > NOW).sort((a, b) => a.end - b.end)[0];
+    detail.innerHTML = `
+      <h3>Click any box on the Sun</h3>
+      <p class="explain">You'll see what the telescope was looking at, which camera it used, how sharp the air was, whether you can download it today, and a link to its preview movie.</p>
+      <div class="links"><button type="button" class="btn primary" id="surprise">Surprise me with a public dataset</button></div>
+      ${next ? `<p class="note">The next locked datasets open on <b style="color:var(--ink)">${fmtDate(next.end)}</b>.</p>` : ""}`;
+    document.getElementById("surprise").onclick = surprise;
+    return;
   }
-
-  const shown = upcoming.slice(0, 15);
-  document.getElementById("tableSub").textContent = upcoming.length
-    ? `The ${shown.length} embargoed datasets that become public soonest, out of ${fmtInt(upcoming.length)} in this view.`
-    : "No embargoed datasets match these filters.";
-  document.getElementById("tbody").innerHTML = shown.map(d => {
-    const days = Math.ceil((d.end - NOW) / 86400000);
-    return `<tr><td class="${days <= 7 ? "soon" : ""}">${fmtDate(d.end)}</td>` +
-      `<td><span class="dot" style="background:var(--s${d.inst + 1})"></span>${INST[d.inst]}</td>` +
-      `<td class="id">${d.id}</td><td>${d.targets || "—"}</td><td>${fmtDate(d.obs)}</td><td>${d.line || "—"}</td><td>${d.gb.toFixed(1)} GB</td></tr>`;
-  }).join("");
+  const name = INST[d.inst], info = INST_INFO[name];
+  const t0 = d.targets[0] || "unknown";
+  const [tName, tWhat] = TARGET_INFO[t0] || [t0, ""];
+  const locked = isLocked(d, NOW);
+  const [sw, swWhat] = seeingWord(d.r0);
+  const r = d.pos ? Math.hypot(d.pos[0], d.pos[1]) : null;
+  const where = !d.pos ? "Position not recorded" :
+    r > R_SUN ? `Beyond the edge, ${fmtInt(Math.round(r - R_SUN))}″ (about ${fmtInt(Math.round((r - R_SUN) * 725 / 1000) * 1000)} km) into the corona` :
+    `${Math.abs(d.pos[0])}″ ${d.pos[0] >= 0 ? "west" : "east"}, ${Math.abs(d.pos[1])}″ ${d.pos[1] >= 0 ? "north" : "south"} of the centre`;
+  const size = d.pos ? `${d.pos[2]}″ × ${d.pos[3]}″ (about ${fmtInt(Math.round(d.pos[2] * 725 / 1000) * 1000)} × ${fmtInt(Math.round(d.pos[3] * 725 / 1000) * 1000)} km)` : "";
+  const specPos = Math.min(100, Math.max(0, (d.nm - 380) / (1700 - 380) * 100));
+  const desc = (EXPERIMENTS[d.exp] || ["", ""])[1];
+  const short = desc.length > 260 ? desc.slice(0, desc.lastIndexOf(" ", 260)) + "…" : desc;
+  const more = state.candidates.length > 1 && state.candidates.includes(d)
+    ? `<span class="cycle">${state.candIdx + 1} of ${state.candidates.length} overlapping here. Click again for the next one.</span>` : "";
+  detail.innerHTML = `
+    <div class="top">
+      <span class="inst"><i class="sw" style="background:${COLORS[d.inst]}"></i>${name} · ${info.name}</span>
+      <button type="button" class="btn" id="closeDetail" aria-label="Close">✕</button>
+    </div>
+    <div>
+      <div class="target">${esc(tName)}</div>
+      <p class="explain">${esc(tWhat)}${d.targets.length > 1 ? ` Also tagged: ${esc(d.targets.slice(1).map(targetName).join(", "))}.` : ""}</p>
+    </div>
+    <div class="status ${locked ? "lock" : "pub"}">${locked ? LOCK_SVG : OPEN_SVG}
+      <div>${locked ? `Locked for ${fmtInt(daysUntil(d.end))} more days` : "Public: anyone can download it"}
+      <small>${locked ? `Opens to everyone on ${fmtDate(d.end)}. Until then, only the science team has it.` : "Free to download from the DKIST Data Center."}</small></div>
+    </div>
+    <dl class="facts">
+      <dt>Observed</dt><dd>${fmtDate(d.obs)}, ${new Date(d.obs).toISOString().slice(11, 16)} UT, for ${d.minutes < 90 ? Math.round(d.minutes) + " minutes" : (d.minutes / 60).toFixed(1) + " hours"}</dd>
+      <dt>Where</dt><dd>${where}</dd>
+      ${size ? `<dt>Area</dt><dd>${size}</dd>` : ""}
+      <dt>Camera</dt><dd>${esc(info.what)}</dd>
+      <dt>Light</dt><dd>${d.nm.toFixed(1)} nm${d.line ? ` · ${esc(d.line)}` : ""}: ${esc(lineMeaning(d.line, d.nm))}
+        <div class="spectrum" aria-hidden="true"><i style="left:calc(${specPos}% - 1px)"></i></div>
+        <div class="spec-labels"><span>visible</span><span>infrared (invisible to your eyes) →</span></div></dd>
+      <dt>Sharpness</dt><dd>${sw}${swWhat ? ` (${swWhat}, r₀ = ${d.r0} cm)` : ""}</dd>
+      <dt>Size</dt><dd>${d.gb >= 1 ? d.gb.toFixed(1) + " GB" : Math.round(d.gb * 1000) + " MB"}</dd>
+    </dl>
+    <div class="links">
+      ${d.vimeo ? `<a class="primary" href="https://vimeo.com/${d.vimeo}" target="_blank" rel="noopener">▶ Watch the preview movie ↗</a>` : ""}
+      <button type="button" class="btn" id="surprise">Surprise me</button>
+    </div>
+    ${desc ? `<details><summary>What the scientists wanted to study</summary><p>${esc(desc)}</p></details>` : ""}
+    <span class="idtag">Dataset ${esc(d.id)} ${more}</span>`;
+  document.getElementById("closeDetail").onclick = () => { state.selected = null; state.candidates = []; renderDetail(); drawSun(); };
+  document.getElementById("surprise").onclick = surprise;
 }
 
-function render() {
-  seeingOut.textContent = state.minR0 > 0 ? `≥ ${state.minR0} cm` : "any";
-  const list = filtered();
-  drawSummary(list); drawRelease(list); drawMap(list); drawSeeing(list);
+function surprise() {
+  const pool = all.filter(d => d.pos && d.obs <= state.t && passes(d) && !isLocked(d, NOW) && d.vimeo);
+  if (!pool.length) return;
+  state.candidates = [];
+  select(pool[Math.floor(Math.random() * pool.length)]);
 }
 
-// ---- Intro text and data date ----
-const fetched = new Date(DATA.fetched);
-const pubAll = rows.filter(d => d.public).length;
+// =====================================================================
+// 7. COUNTERS
+// =====================================================================
+function renderCounts() {
+  let n = 0, pub = 0, gbPub = 0, gbLock = 0;
+  for (const d of all) {
+    if (d.obs > state.t || !passes(d)) continue;
+    n++;
+    if (isLocked(d, state.t)) gbLock += d.gb; else { pub++; gbPub += d.gb; }
+  }
+  const lock = n - pub;
+  const tb = g => g >= 1000 ? (g / 1000).toFixed(1) + " TB" : Math.round(g) + " GB";
+  document.getElementById("cAll").textContent = fmtInt(n);
+  document.getElementById("cAllS").textContent = tb(gbPub + gbLock);
+  document.getElementById("cPub").textContent = fmtInt(pub);
+  document.getElementById("cPubS").textContent = n ? Math.round(100 * pub / n) + "% · " + tb(gbPub) : "—";
+  document.getElementById("cLock").textContent = fmtInt(lock);
+  document.getElementById("cLockS").textContent = n ? Math.round(100 * lock / n) + "% · " + tb(gbLock) : "—";
+  document.getElementById("meter").style.width = (n ? 100 * pub / n : 0) + "%";
+
+  const t = state.t, days = Math.round((t - NOW) / DAY);
+  document.getElementById("dateLabel").textContent = fmtDate(t);
+  document.getElementById("when").textContent = Math.abs(days) < 1 ? "Today" : days > 0 ? "Future · from embargo dates" : "Past";
+  document.getElementById("timeNote").textContent = Math.abs(days) < 1
+    ? "Showing everything observed up to today."
+    : days > 0
+      ? `${fmtInt(days)} days from now. No new observations are shown, because they haven't happened yet. Locked boxes open on their release dates.`
+      : "Showing what had been observed by this date. Locks show today's status, because the archive doesn't record when older data were released.";
+}
+
+// =====================================================================
+// 8. TIMELINE (bars per month + draggable cursor)
+// =====================================================================
+const tl = document.getElementById("tl"), tctx = tl.getContext("2d");
+const range = document.getElementById("time");
+range.min = START; range.max = END; range.step = DAY; range.value = state.t;
+const months = [];
+for (let m = START; m < END; m = Date.UTC(new Date(m).getUTCFullYear(), new Date(m).getUTCMonth() + 1, 1)) months.push(m);
+let bars = [];
+function computeBars() {           // depends only on the static filters
+  const idx = t => { const d = new Date(t); return (d.getUTCFullYear() - new Date(START).getUTCFullYear()) * 12 + d.getUTCMonth() - new Date(START).getUTCMonth(); };
+  bars = months.map(() => ({ pub: 0, lock: 0, unlock: 0 }));
+  for (const d of all) {
+    if (!passesStatic(d)) continue;
+    const i = idx(d.obs);
+    if (bars[i]) { isLocked(d, NOW) ? bars[i].lock++ : bars[i].pub++; }
+    if (d.end && d.end > NOW) { const j = idx(d.end); if (bars[j]) bars[j].unlock++; }
+  }
+}
+function drawTimeline() {
+  const w = tl.clientWidth, h = tl.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (tl.width !== w * dpr) { tl.width = w * dpr; tl.height = h * dpr; }
+  const c = tctx; c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+  const x = t => (t - START) / (END - START) * w;
+  const top = 14, base = h - 20;
+  const maxV = Math.max(1, ...bars.map(b => Math.max(b.pub + b.lock, b.unlock)));
+  const yv = v => (base - top) * v / maxV;
+  // future zone
+  c.fillStyle = "rgba(255,181,71,0.05)"; c.fillRect(x(NOW), 0, w - x(NOW), base);
+  months.forEach((m, i) => {
+    const x0 = x(m) + 1, bw = Math.max(1, w / months.length - 2), b = bars[i];
+    if (b.pub) { c.fillStyle = "#8fb2d6"; c.fillRect(x0, base - yv(b.pub), bw, yv(b.pub)); }
+    if (b.lock) { c.setLineDash([3, 2]); c.strokeStyle = LOCK; c.lineWidth = 1; c.strokeRect(x0 + .5, base - yv(b.pub + b.lock) + .5, bw - 1, yv(b.lock) - 1); c.setLineDash([]); }
+    if (b.unlock) { c.fillStyle = rgba(GOLD, m + 20 * DAY <= state.t ? 0.95 : 0.45); c.fillRect(x0, base - yv(b.unlock), bw, yv(b.unlock)); }
+  });
+  c.strokeStyle = "#2a313d"; c.beginPath(); c.moveTo(0, base + .5); c.lineTo(w, base + .5); c.stroke();
+  // year labels
+  c.fillStyle = "#7f8896"; c.font = "11px Inter, system-ui, sans-serif"; c.textAlign = "left";
+  for (let y = new Date(START).getUTCFullYear() + 1; Date.UTC(y, 0, 1) < END; y++) {
+    const xx = x(Date.UTC(y, 0, 1)); c.fillRect(xx, base, 1, 4); c.fillText(y, xx + 3, base + 15);
+  }
+  // today marker
+  c.strokeStyle = GOLD; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(x(NOW) + .5, 0); c.lineTo(x(NOW) + .5, base); c.stroke(); c.setLineDash([]);
+  c.fillStyle = GOLD; c.font = "600 11px Inter, system-ui, sans-serif"; c.textAlign = x(NOW) > w - 60 ? "right" : "left";
+  c.fillText("Today", x(NOW) + (c.textAlign === "left" ? 5 : -5), 11);
+  // cursor
+  const cx = x(state.t);
+  c.fillStyle = "#ffffff"; c.fillRect(cx - 1, 0, 2, base);
+  c.beginPath(); c.arc(cx, base, 5, 0, 7); c.fill();
+}
+function setTimeFromPointer(e) {
+  const r = tl.getBoundingClientRect();
+  state.t = START + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (END - START);
+  stop(); update(false);
+}
+tl.addEventListener("pointerdown", e => { tl.setPointerCapture(e.pointerId); setTimeFromPointer(e); });
+tl.addEventListener("pointermove", e => { if (e.buttons) setTimeFromPointer(e); });
+range.addEventListener("input", () => { state.t = +range.value; stop(); update(false); });
+
+// =====================================================================
+// 9. PLAYBACK
+// =====================================================================
+const playBtn = document.getElementById("play"), playIcon = document.getElementById("playIcon");
+const PLAY_MS = 28000;      // whole timeline in about 28 seconds at normal speed
+let lastFrame = 0, holdUntil = 0;
+function play() {
+  if (state.t >= END - DAY) state.t = START;
+  state.playing = true; lastFrame = 0;
+  playBtn.setAttribute("aria-label", "Pause");
+  playIcon.innerHTML = `<rect x="3.5" y="2.5" width="3" height="11" fill="currentColor"/><rect x="9.5" y="2.5" width="3" height="11" fill="currentColor"/>`;
+  requestAnimationFrame(frame);
+}
+function stop() {
+  state.playing = false;
+  playBtn.setAttribute("aria-label", "Play");
+  playIcon.innerHTML = `<path d="M4 2.5v11l9-5.5z" fill="currentColor"/>`;
+}
+playBtn.onclick = () => state.playing ? (stop(), update(false)) : play();
+function frame(time) {
+  if (!state.playing) return;
+  const dt = lastFrame ? Math.min(time - lastFrame, 50) : 0; lastFrame = time;
+  if (time >= holdUntil) {
+    const before = state.t;
+    state.t += dt * state.speed * (END - START) / PLAY_MS;
+    if (before < NOW && state.t >= NOW) { state.t = NOW; holdUntil = time + 1400; }   // pause briefly at "today"
+    if (state.t >= END) { state.t = END; update(false); stop(); return; }
+  }
+  update(false, time);
+  requestAnimationFrame(frame);
+}
+
+// =====================================================================
+// 10. STORY CARDS (a guided tour for the demo)
+// =====================================================================
+function buildStories() {
+  const n = k => all.filter(d => d.targets.includes(k)).length;
+  const offLimb = all.filter(d => d.pos && Math.hypot(d.pos[0], d.pos[1]) > R_SUN).length;
+  const locked = all.filter(d => isLocked(d, NOW));
+  const oldestLocked = Math.min(...locked.map(d => d.obs));
+  const stories = [
+    { num: fmtInt(n("sunspot")), text: "datasets look at sunspots, more than any other target. Show only those, then click a few boxes to see what the scientists were after.",
+      go: () => { resetFilters(); state.target = "sunspot"; state.t = NOW; } },
+    { num: fmtInt(offLimb), text: "datasets point beyond the Sun's edge, at the faint corona. Every one of them comes from CRYO-NIRSP, the instrument built to study the corona.",
+      go: () => { resetFilters(); state.inst = new Set([INST.indexOf("CRYO-NIRSP")]); state.t = NOW; } },
+    { num: fmtInt(locked.length), text: `datasets are still locked. All of them were observed after ${fmtDate(oldestLocked)}, so anything older is free to download.`,
+      go: () => { resetFilters(); state.status = "locked"; state.t = NOW; } },
+    { num: fmtDate(Math.max(...locked.map(d => d.end))).replace(/^\w+ \d+, /, ""), text: `is when the last current lock opens (${fmtDate(Math.max(...locked.map(d => d.end)))}). Press "Show me" to watch the locks open month by month.`,
+      go: () => { resetFilters(); state.t = NOW; setTimeout(play, 50); } },
+  ];
+  document.getElementById("stories").innerHTML = stories.map((s, i) =>
+    `<div class="story"><span class="num">${s.num}</span><p>${s.text}</p><button type="button" class="btn" data-i="${i}">Show me</button></div>`).join("");
+  document.querySelectorAll("#stories button").forEach(b => b.onclick = () => {
+    stop(); stories[+b.dataset.i].go(); state.selected = null; syncControls(); update(true);
+    document.querySelector(".stage").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  });
+}
+
+// =====================================================================
+// 11. PUT IT ALL TOGETHER
+// =====================================================================
+function update(filtersChanged, time) {
+  if (filtersChanged) computeBars();
+  range.value = state.t;
+  drawSun(time); drawTimeline(); renderCounts();
+  if (filtersChanged && !state.playing) renderDetail();
+}
+
+const pubNow = all.filter(d => !isLocked(d, NOW)).length;
 document.getElementById("lede").innerHTML =
-  `The 4-meter Inouye telescope has recorded <b>${fmtInt(rows.length)} datasets</b> since ` +
-  `${fmtDate(new Date(Math.min(...rows.map(d => d.obs))))}. <b>${Math.round(100 * pubAll / rows.length)}%</b> are public today. ` +
-  `The rest are under embargo, reserved for the team that requested the observations. Filter by instrument, seeing quality or target to see what is available and when the rest opens up.`;
+  `Since ${fmtMonth(FIRST_OBS)}, the Inouye Solar Telescope has recorded <b>${fmtInt(all.length)} datasets</b>. ` +
+  `Each box on the Sun below is one of them, drawn where the telescope pointed. <b>${Math.round(100 * pubNow / all.length)}%</b> are free for anyone to download. The rest are locked for now. ` +
+  `Press play to watch it all build up, or click a box to see what it captured.`;
 document.getElementById("asof").textContent =
-  `Archive list downloaded ${fmtDate(fetched)}. Public or embargoed is worked out from each dataset's embargo end date and today's date.`;
+  `Archive list downloaded ${fmtDate(Date.parse(DATA.fetched))}. ${fmtInt(all.filter(d => !d.pos).length)} datasets with no usable position are counted but not drawn. ` +
+  `Public or locked is worked out from each dataset's embargo end date and today's date.`;
 
-render();
-
-// Redraw charts when the viewer switches between light and dark.
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
-new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+sizeSun(); buildStories(); computeBars(); update(true);
+new ResizeObserver(() => { sizeSun(); update(false); }).observe(sun);
+// gentle pulse on the selected box when nothing else is animating
+(function idle(time) { if (!state.playing && state.selected) drawSun(time); requestAnimationFrame(idle); })();
 </script>

@@ -57,6 +57,11 @@ def download_inventory():
                 fried_m=r["Average Fried Parameter"],   # seeing: bigger = steadier air
                 embargoed=bool(r["Embargoed"]),
                 embargo_end=str(getattr(end, "isot", end)) if end is not None else None,
+                # Extra fields used by the dashboard (16c):
+                bounding_box=r["Bounding Box"],          # where on the Sun, in arcseconds from disk centre
+                preview_url=r["Preview URL"],            # short preview movie of the dataset
+                experiment_id=r["Primary Experiment ID"],
+                experiment_description=str(r["Experiment Description"] or "").strip(),
             ))
         print(f"  page {page}: {len(rows)} datasets so far")
         if len(rows) >= t.total_available_results:
