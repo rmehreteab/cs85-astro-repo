@@ -1,0 +1,403 @@
+<title>DKIST Archive Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+/* Layout: one column of bands. Filters sit in one row above everything; summary tiles, then the
+   release schedule (the question this page answers), then the archive map and seeing histogram side by side. */
+:root {
+  --bg: #f6f7f9;            /* page: cool grey with a slight blue bias */
+  --surface: #ffffff;       /* panels and chart surface */
+  --ink: #12161c;           /* primary text */
+  --ink-2: #4a525e;         /* secondary text */
+  --ink-3: #7a828e;         /* muted text, axis labels */
+  --line: #dfe3e8;          /* borders, gridlines */
+  --chip: #eef1f4;          /* control fill */
+  --focus: #2a78d6;
+  --public: #1baf7a;
+  --embargo: #8a93a0;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;  /* instruments, fixed order */
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101317; --surface: #181c21; --ink: #eef0f3; --ink-2: #b6bcc5; --ink-3: #868e99;
+    --line: #2b3139; --chip: #232830; --focus: #3987e5; --public: #199e70; --embargo: #7d8591;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101317; --surface: #181c21; --ink: #eef0f3; --ink-2: #b6bcc5; --ink-3: #868e99;
+  --line: #2b3139; --chip: #232830; --focus: #3987e5; --public: #199e70; --embargo: #7d8591;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 20px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(26px, 4vw, 34px); line-height: 1.15; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 0; }
+.lede { color: var(--ink-2); max-width: 68ch; margin: 0; }
+.lede b { color: var(--ink); font-weight: 600; }
+
+/* Filters: one row, wraps on narrow screens */
+.filters { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field > .label { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--chip);
+  color: var(--ink); border-radius: 999px; padding: 5px 11px; font: 500 13px var(--font-body); cursor: pointer; }
+.chip .sw { width: 10px; height: 10px; border-radius: 3px; }
+.chip[aria-pressed="false"] { background: transparent; color: var(--ink-3); }
+.chip[aria-pressed="false"] .sw { opacity: .25; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); padding: 6px 12px; font: 500 13px var(--font-body); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--chip); color: var(--ink); }
+select { font: 500 13px var(--font-body); padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.range { display: flex; align-items: center; gap: 10px; }
+.range input[type=range] { width: 160px; accent-color: var(--focus); }
+.range output { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 4.5ch; }
+.check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.reset { margin-left: auto; border: 1px solid var(--line); background: transparent; color: var(--ink-2); border-radius: 8px; padding: 6px 12px; font: 500 13px var(--font-body); cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Summary tiles */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
+.tile .k { font-size: 12px; color: var(--ink-2); font-weight: 500; }
+.tile .v { font-family: var(--font-display); font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.tile .s { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.bar { height: 6px; border-radius: 3px; background: var(--embargo); overflow: hidden; margin-top: 6px; display: flex; }
+.bar i { display: block; height: 100%; background: var(--public); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 8px; min-width: 0; }
+.panel .sub { color: var(--ink-3); font-size: 13px; margin: 0; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; }
+.chart { width: 100%; height: 320px; }
+.chart.tall { height: 360px; }
+.empty { color: var(--ink-3); padding: 40px 0; text-align: center; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--ink-3); font-weight: 600; font-size: 12px; }
+td.id { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+.soon { font-weight: 600; }
+footer { color: var(--ink-3); font-size: 12px; display: grid; gap: 4px; }
+footer a { color: var(--ink-2); }
+
+@media (max-width: 860px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .reset { margin-left: 0; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Daniel K. Inouye Solar Telescope · Haleakalā, Maui</div>
+    <h1>What has DKIST observed, and when does it go public?</h1>
+    <p class="lede" id="lede"></p>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <div class="field">
+      <span class="label">Instrument</span>
+      <div class="chips" id="instChips"></div>
+    </div>
+    <div class="field">
+      <label class="label" for="seeing">Minimum seeing quality, r₀</label>
+      <div class="range">
+        <input type="range" id="seeing" min="0" max="15" step="0.5" value="0">
+        <output id="seeingOut" for="seeing">any</output>
+      </div>
+      <label class="check"><input type="checkbox" id="noSeeing" checked> Include datasets with no seeing value</label>
+    </div>
+    <div class="field">
+      <label class="label" for="target">Target</label>
+      <select id="target"></select>
+    </div>
+    <div class="field">
+      <span class="label">Status</span>
+      <div class="seg" id="status">
+        <button type="button" data-v="all" aria-pressed="true">All</button>
+        <button type="button" data-v="public" aria-pressed="false">Public</button>
+        <button type="button" data-v="embargoed" aria-pressed="false">Embargoed</button>
+      </div>
+    </div>
+    <button type="button" class="reset" id="reset">Reset filters</button>
+  </section>
+
+  <section class="tiles" aria-label="Summary">
+    <div class="tile"><span class="k">Datasets shown</span><span class="v" id="tCount"></span><span class="s" id="tCountS"></span></div>
+    <div class="tile"><span class="k">Public now</span><span class="v" id="tPub"></span><span class="s" id="tPubS"></span><div class="bar"><i id="tPubBar"></i></div></div>
+    <div class="tile"><span class="k">Still embargoed</span><span class="v" id="tEmb"></span><span class="s" id="tEmbS"></span></div>
+    <div class="tile"><span class="k">Next release</span><span class="v" id="tNext"></span><span class="s" id="tNextS"></span></div>
+  </section>
+
+  <section class="panel">
+    <h2>When embargoed data become public</h2>
+    <p class="sub">Each bar counts datasets whose embargo ends that month. During the embargo, only the observing team can download them.</p>
+    <div id="cRelease" class="chart"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Every dataset: date and wavelength</h2>
+      <p class="sub">Filled marks are public, open marks are embargoed. Each instrument has its own color and shape. Wavelength is on a log scale.</p>
+      <div id="cMap" class="chart tall"></div>
+    </section>
+    <section class="panel">
+      <h2>Seeing quality</h2>
+      <p class="sub">r₀ (the Fried parameter) is the size of a patch of steady air above the telescope. Bigger r₀ means steadier air and sharper images. The dashed line is your minimum.</p>
+      <div id="cSeeing" class="chart tall"></div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Next releases</h2>
+    <p class="sub" id="tableSub"></p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Public on</th><th>Instrument</th><th>Dataset</th><th>Target</th><th>Observed</th><th>Spectral line</th><th>Size</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+  </section>
+
+  <footer>
+    <span id="asof"></span>
+    <span>Data: NSO DKIST Data Center, <a href="https://dkist.data.nso.edu" target="_blank" rel="noopener">dkist.data.nso.edu</a>, searched with the <code>dkist</code> Python package. Built for CS85 project 16.</span>
+  </footer>
+</div>
+
+<script>
+// ---- The data: filled in by starters/16c_dkist_dashboard.py ----
+const DATA = /*DATA*/;
+
+// Each row: [id, instrumentIndex, observedISO, wavelength_nm, r0_cm|null, embargoEndISO|null, sizeGB, targets, line]
+const INST = DATA.instruments;
+const NOW = new Date();
+const rows = DATA.rows.map(r => ({
+  id: r[0], inst: r[1], obs: new Date(r[2]), nm: r[3], r0: r[4],
+  end: r[5] ? new Date(r[5]) : null, gb: r[6], targets: r[7], line: r[8],
+}));
+// A dataset is public if it never had an embargo, or its embargo date has passed (by the viewer's clock).
+rows.forEach(d => { d.public = !d.end || d.end <= NOW; });
+
+const SHAPES = ["circle", "square", "diamond", "triangle-up"];
+const state = { inst: new Set(INST.map((_, i) => i)), minR0: 0, noSeeing: true, target: "all", status: "all" };
+
+const fmtDate = d => d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+const fmtInt = n => n.toLocaleString("en-US");
+const tb = gb => gb >= 1000 ? (gb / 1000).toFixed(1) + " TB" : Math.round(gb) + " GB";
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const instColor = i => css("--s" + (i + 1));
+
+// ---- Build the filter controls ----
+const chipBox = document.getElementById("instChips");
+INST.forEach((name, i) => {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.setAttribute("aria-pressed", "true"); b.id = "chip-" + i;
+  b.innerHTML = `<span class="sw" style="background:var(--s${i + 1})"></span>${name}`;
+  b.onclick = () => {
+    state.inst.has(i) ? state.inst.delete(i) : state.inst.add(i);
+    b.setAttribute("aria-pressed", state.inst.has(i));
+    render();
+  };
+  chipBox.appendChild(b);
+});
+
+const targetCounts = {};
+rows.forEach(d => d.targets.split("; ").forEach(t => { if (t) targetCounts[t] = (targetCounts[t] || 0) + 1; }));
+const targetSel = document.getElementById("target");
+targetSel.innerHTML = `<option value="all">All targets</option>` + Object.entries(targetCounts)
+  .sort((a, b) => b[1] - a[1]).map(([t, n]) => `<option value="${t}">${t} (${fmtInt(n)})</option>`).join("");
+targetSel.onchange = () => { state.target = targetSel.value; render(); };
+
+const seeing = document.getElementById("seeing"), seeingOut = document.getElementById("seeingOut");
+seeing.oninput = () => { state.minR0 = +seeing.value; render(); };
+const noSeeing = document.getElementById("noSeeing");
+noSeeing.onchange = () => { state.noSeeing = noSeeing.checked; render(); };
+
+document.querySelectorAll("#status button").forEach(b => b.onclick = () => {
+  state.status = b.dataset.v;
+  document.querySelectorAll("#status button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  render();
+});
+
+document.getElementById("reset").onclick = () => {
+  state.inst = new Set(INST.map((_, i) => i)); state.minR0 = 0; state.noSeeing = true; state.target = "all"; state.status = "all";
+  document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", "true"));
+  seeing.value = 0; noSeeing.checked = true; targetSel.value = "all";
+  document.querySelectorAll("#status button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === "all"));
+  render();
+};
+
+// ---- Apply the filters ----
+function filtered() {
+  return rows.filter(d =>
+    state.inst.has(d.inst) &&
+    (d.r0 == null ? state.noSeeing : d.r0 >= state.minR0) &&
+    (state.target === "all" || d.targets.split("; ").includes(state.target)) &&
+    (state.status === "all" || (state.status === "public") === d.public));
+}
+
+// ---- Shared chart styling, read from the page's color tokens so both themes work ----
+function baseLayout(extra) {
+  const ink2 = css("--ink-2"), line = css("--line");
+  const axis = { gridcolor: line, linecolor: line, zerolinecolor: line, tickfont: { color: ink2, size: 11 },
+                 title: { font: { color: ink2, size: 12 } } };
+  return Object.assign({
+    paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+    font: { family: "Inter, system-ui, sans-serif", color: css("--ink") },
+    margin: { l: 56, r: 12, t: 8, b: 44 },
+    legend: { orientation: "h", y: 1.12, x: 0, traceorder: "normal", font: { color: ink2, size: 12 } },
+    hoverlabel: { bgcolor: css("--surface"), bordercolor: line, font: { color: css("--ink"), family: "Inter, system-ui, sans-serif" } },
+    xaxis: JSON.parse(JSON.stringify(axis)), yaxis: JSON.parse(JSON.stringify(axis)),
+    bargap: 0.18,
+  }, extra || {});
+}
+const CONFIG = { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"] };
+
+function emptyChart(el, msg) { Plotly.purge(el); el.innerHTML = `<div class="empty">${msg}</div>`; }
+
+// ---- Chart 1: release schedule (stacked bars by instrument) ----
+function drawRelease(list) {
+  const el = document.getElementById("cRelease");
+  const pending = list.filter(d => !d.public);
+  if (!pending.length) return emptyChart(el, "Nothing embargoed matches these filters.");
+  el.innerHTML = "";
+  const monthKey = d => `${d.end.getUTCFullYear()}-${String(d.end.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const months = [...new Set(pending.map(monthKey))].sort();
+  // fill gaps so empty months show as gaps on the axis
+  const all = []; let m = new Date(months[0] + "T00:00:00Z"); const last = new Date(months[months.length - 1] + "T00:00:00Z");
+  while (m <= last) { all.push(m.toISOString().slice(0, 10)); m = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 1)); }
+  const traces = INST.map((name, i) => {
+    const counts = all.map(k => pending.filter(d => d.inst === i && monthKey(d) === k).length);
+    return { type: "bar", name, x: all, y: counts, marker: { color: instColor(i), line: { color: css("--surface"), width: 1 } },
+             hovertemplate: `<b>${name}</b><br>%{x|%B %Y}: %{y} datasets<extra></extra>` };
+  }).filter((t, i) => state.inst.has(i));
+  Plotly.react(el, traces, baseLayout({
+    barmode: "stack",
+    xaxis: Object.assign(baseLayout().xaxis, { type: "date", tickformat: "%b\n%Y", dtick: el.clientWidth < 600 ? "M2" : "M1", showgrid: false }),
+    yaxis: Object.assign(baseLayout().yaxis, { title: { text: "Datasets becoming public", font: { color: css("--ink-2"), size: 12 } } }),
+  }), CONFIG);
+}
+
+// ---- Chart 2: archive map (date vs wavelength) ----
+function drawMap(list) {
+  const el = document.getElementById("cMap");
+  if (!list.length) return emptyChart(el, "No datasets match these filters.");
+  el.innerHTML = "";
+  const traces = [];
+  INST.forEach((name, i) => {
+    if (!state.inst.has(i)) return;
+    [true, false].forEach(pub => {
+      const g = list.filter(d => d.inst === i && d.public === pub);
+      if (!g.length) return;
+      traces.push({
+        type: "scattergl", mode: "markers", name: pub ? name : name + " (embargoed)", legendgroup: name, showlegend: pub,
+        x: g.map(d => d.obs), y: g.map(d => d.nm),
+        customdata: g.map(d => [d.id, d.line || "—", d.r0 == null ? "no value" : d.r0.toFixed(1) + " cm",
+                                d.public ? "public" : "public on " + fmtDate(d.end), d.targets]),
+        hovertemplate: `<b>${name}</b> · %{customdata[0]}<br>%{x|%d %b %Y}<br>%{y:.1f} nm · %{customdata[1]}` +
+                       `<br>target: %{customdata[4]}<br>seeing r₀: %{customdata[2]}<br>%{customdata[3]}<extra></extra>`,
+        marker: { symbol: SHAPES[i] + (pub ? "" : "-open"), size: 8, color: instColor(i), opacity: pub ? 0.75 : 1,
+                  line: { width: pub ? 0 : 1.5, color: instColor(i) } },
+      });
+    });
+  });
+  Plotly.react(el, traces, baseLayout({
+    xaxis: Object.assign(baseLayout().xaxis, { type: "date", title: { text: "Observed (UT)", font: { color: css("--ink-2"), size: 12 } } }),
+    yaxis: Object.assign(baseLayout().yaxis, { type: "log", title: { text: "Wavelength (nm)", font: { color: css("--ink-2"), size: 12 } },
+                                               tickvals: [400, 500, 600, 800, 1000, 1500], }),
+  }), CONFIG);
+}
+
+// ---- Chart 3: seeing histogram ----
+function drawSeeing(list) {
+  const el = document.getElementById("cSeeing");
+  const withR0 = list.filter(d => d.r0 != null);
+  if (!withR0.length) return emptyChart(el, "None of these datasets has a seeing value.");
+  el.innerHTML = "";
+  const traces = INST.map((name, i) => ({
+    type: "histogram", name, x: withR0.filter(d => d.inst === i).map(d => Math.min(d.r0, 20)),
+    xbins: { start: 0, end: 20, size: 0.5 }, marker: { color: instColor(i), line: { color: css("--surface"), width: 1 } },
+    hovertemplate: `<b>${name}</b><br>r₀ %{x} cm: %{y} datasets<extra></extra>`,
+  })).filter((t, i) => state.inst.has(i));
+  const shapes = state.minR0 > 0 ? [{ type: "line", x0: state.minR0, x1: state.minR0, y0: 0, y1: 1, yref: "paper",
+                                      line: { color: css("--ink"), width: 1.5, dash: "dash" } }] : [];
+  Plotly.react(el, traces, baseLayout({
+    barmode: "stack", shapes, bargap: 0.05,
+    xaxis: Object.assign(baseLayout().xaxis, { range: [0, 20], title: { text: "r₀ (cm), values above 20 shown at 20", font: { color: css("--ink-2"), size: 12 } } }),
+    yaxis: Object.assign(baseLayout().yaxis, { title: { text: "Datasets", font: { color: css("--ink-2"), size: 12 } } }),
+  }), CONFIG);
+}
+
+// ---- Summary tiles and table ----
+function drawSummary(list) {
+  const pub = list.filter(d => d.public), emb = list.filter(d => !d.public);
+  const gb = l => l.reduce((s, d) => s + d.gb, 0);
+  document.getElementById("tCount").textContent = fmtInt(list.length);
+  document.getElementById("tCountS").textContent = `of ${fmtInt(rows.length)} · ${tb(gb(list))} of data`;
+  const pct = list.length ? Math.round(100 * pub.length / list.length) : 0;
+  document.getElementById("tPub").textContent = list.length ? pct + "%" : "—";
+  document.getElementById("tPubS").textContent = `${fmtInt(pub.length)} datasets · ${tb(gb(pub))}`;
+  document.getElementById("tPubBar").style.width = pct + "%";
+  document.getElementById("tEmb").textContent = fmtInt(emb.length);
+  document.getElementById("tEmbS").textContent = emb.length ? `${tb(gb(emb))} · observed since ${fmtDate(new Date(Math.min(...emb.map(d => d.obs))))}` : "nothing waiting";
+
+  const upcoming = emb.slice().sort((a, b) => a.end - b.end);
+  if (upcoming.length) {
+    const first = upcoming[0].end;
+    const sameDay = upcoming.filter(d => d.end.toISOString().slice(0, 10) === first.toISOString().slice(0, 10)).length;
+    // count calendar days (UTC) until the release, so a release later today says "today"
+    const dayOf = d => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const days = Math.max(0, Math.round((dayOf(first) - dayOf(NOW)) / 86400000));
+    document.getElementById("tNext").textContent = fmtDate(first).replace(/, \d{4}$/, "");
+    document.getElementById("tNextS").textContent = `${days === 0 ? "today" : "in " + days + (days === 1 ? " day" : " days")} · ${sameDay} datasets · last on ${fmtDate(upcoming[upcoming.length - 1].end)}`;
+  } else {
+    document.getElementById("tNext").textContent = "—";
+    document.getElementById("tNextS").textContent = "no embargoed datasets in this view";
+  }
+
+  const shown = upcoming.slice(0, 15);
+  document.getElementById("tableSub").textContent = upcoming.length
+    ? `The ${shown.length} embargoed datasets that become public soonest, out of ${fmtInt(upcoming.length)} in this view.`
+    : "No embargoed datasets match these filters.";
+  document.getElementById("tbody").innerHTML = shown.map(d => {
+    const days = Math.ceil((d.end - NOW) / 86400000);
+    return `<tr><td class="${days <= 7 ? "soon" : ""}">${fmtDate(d.end)}</td>` +
+      `<td><span class="dot" style="background:var(--s${d.inst + 1})"></span>${INST[d.inst]}</td>` +
+      `<td class="id">${d.id}</td><td>${d.targets || "—"}</td><td>${fmtDate(d.obs)}</td><td>${d.line || "—"}</td><td>${d.gb.toFixed(1)} GB</td></tr>`;
+  }).join("");
+}
+
+function render() {
+  seeingOut.textContent = state.minR0 > 0 ? `≥ ${state.minR0} cm` : "any";
+  const list = filtered();
+  drawSummary(list); drawRelease(list); drawMap(list); drawSeeing(list);
+}
+
+// ---- Intro text and data date ----
+const fetched = new Date(DATA.fetched);
+const pubAll = rows.filter(d => d.public).length;
+document.getElementById("lede").innerHTML =
+  `The 4-meter Inouye telescope has recorded <b>${fmtInt(rows.length)} datasets</b> since ` +
+  `${fmtDate(new Date(Math.min(...rows.map(d => d.obs))))}. <b>${Math.round(100 * pubAll / rows.length)}%</b> are public today. ` +
+  `The rest are under embargo, reserved for the team that requested the observations. Filter by instrument, seeing quality or target to see what is available and when the rest opens up.`;
+document.getElementById("asof").textContent =
+  `Archive list downloaded ${fmtDate(fetched)}. Public or embargoed is worked out from each dataset's embargo end date and today's date.`;
+
+render();
+
+// Redraw charts when the viewer switches between light and dark.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
